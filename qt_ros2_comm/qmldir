@@ -1,0 +1,4 @@
+module qt_ros2_comm
+
+prefer :/qt/qml/qt_ros2_comm/
+Main 1.0 Main.qml
