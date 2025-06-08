@@ -47,6 +47,8 @@ public:
     Q_INVOKABLE void connectToHost();
     Q_INVOKABLE void disconnectFromHost();
     Q_INVOKABLE QmlMqttSubscription *subscribe(const QString &topic);
+    Q_INVOKABLE void publishMessage(const QString &topic, const QString &message);
+
 
     const QString hostname() const;
     void setHostname(const QString &newHostname);
@@ -60,8 +62,8 @@ public:
 signals:
     void hostnameChanged();
     void portChanged();
-
     void stateChanged();
+    void error(const QString &errorMessage);
 
 private:
     Q_DISABLE_COPY(QmlMqttClient)

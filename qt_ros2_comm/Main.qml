@@ -1,6 +1,3 @@
-// Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
-
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
@@ -10,128 +7,131 @@ Window {
     visible: true
     width: 640
     height: 480
-    title: qsTr("Qt Quick Subscription")
+    title: qsTr("ROS 2 MQTT Client")
     id: root
 
     property var tempSubscription: 0
+    property string latestResponse: ""
 
     MqttClient {
         id: client
-        hostname: hostnameField.text
-        port: portField.text
+        hostname: "localhost"
+        port: 1883
     }
 
     ListModel {
         id: messageModel
     }
 
-    function addMessage(payload)
-    {
-        messageModel.insert(0, {"payload" : payload})
-
+    function addMessage(payload) {
+        latestResponse = payload
+        messageModel.insert(0, { "payload": payload })
         if (messageModel.count >= 100)
             messageModel.remove(99)
     }
 
-    GridLayout {
-        anchors.fill: parent
-        anchors.margins: 10
-        columns: 2
+    Component.onCompleted: {
+        client.connectToHost()
+    }
 
-        Label {
-            text: "Hostname:"
-            enabled: client.state === MqttClient.Disconnected
-        }
-
-        TextField {
-            id: hostnameField
-            Layout.fillWidth: true
-            text: "test.mosquitto.org"
-            placeholderText: "<Enter host running MQTT broker>"
-            enabled: client.state === MqttClient.Disconnected
-        }
-
-        Label {
-            text: "Port:"
-            enabled: client.state === MqttClient.Disconnected
-        }
-
-        TextField {
-            id: portField
-            Layout.fillWidth: true
-            text: "1883"
-            placeholderText: "<Port>"
-            inputMethodHints: Qt.ImhDigitsOnly
-            enabled: client.state === MqttClient.Disconnected
-        }
-
-        Button {
-            id: connectButton
-            Layout.columnSpan: 2
-            Layout.fillWidth: true
-            text: client.state === MqttClient.Connected ? "Disconnect" : "Connect"
-            onClicked: {
-                if (client.state === MqttClient.Connected) {
-                    client.disconnectFromHost()
-                    messageModel.clear()
-                    root.tempSubscription.destroy()
-                    root.tempSubscription = 0
-                } else
-                    client.connectToHost()
+    Connections {
+        target: client
+        onStateChanged: {
+            if (client.state === MqttClient.Connected) {
+                console.log("Connected to MQTT broker.")
+                if (root.tempSubscription === 0) {
+                    tempSubscription = client.subscribe("sensor/response")
+                    tempSubscription.messageReceived.connect(addMessage)
+                }
+            } else if (client.state === MqttClient.Disconnected) {
+                console.log("Disconnected from MQTT broker.")
+                // Try to reconnect after a delay
+                reconnectTimer.start()
             }
         }
+    }
 
-        RowLayout {
-            enabled: client.state === MqttClient.Connected
-            Layout.columnSpan: 2
+    Timer {
+        id: reconnectTimer
+        interval: 5000  // 5 seconds
+        repeat: false
+        onTriggered: {
+            console.log("Attempting to reconnect...")
+            client.connectToHost()
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 10
+        spacing: 10
+
+        GroupBox {
+            title: "Latest Response"
             Layout.fillWidth: true
 
             Label {
-                text: "Topic:"
+                text: latestResponse.length > 0 ? latestResponse : "No response yet"
+                font.bold: true
+                wrapMode: Text.WordWrap
+                padding: 10
             }
+        }
 
-            TextField {
-                id: subField
-                placeholderText: "<Subscription topic>"
-                Layout.fillWidth: true
-                enabled: root.tempSubscription === 0
-            }
+        GroupBox {
+            title: "Send Request"
+            Layout.fillWidth: true
 
-            Button {
-                id: subButton
-                text: "Subscribe"
-                visible: root.tempSubscription === 0
-                onClicked: {
-                    if (subField.text.length === 0) {
-                        console.log("No topic specified to subscribe to.")
-                        return
+            RowLayout {
+                spacing: 10
+                Button {
+                    text: "Get Time"
+                    onClicked: {
+                        client.publishMessage("sensor/request", "time")
+                        console.log("Published time request")
                     }
-                    tempSubscription = client.subscribe(subField.text)
-                    tempSubscription.messageReceived.connect(addMessage)
+                }
+                Button {
+                    text: "Get Storage"
+                    onClicked: {
+                        client.publishMessage("sensor/request", "storage")
+                        console.log("Published storage request")
+                    }
+                }
+                Button {
+                    text: "Get Temperature"
+                    onClicked: {
+                        client.publishMessage("sensor/request", "temperature")
+                        console.log("Published temperature request")
+                    }
                 }
             }
         }
 
-        ListView {
-            id: messageView
-            model: messageModel
-            implicitHeight: 300
-            implicitWidth: 200
-            Layout.columnSpan: 2
-            Layout.fillHeight: true
+        GroupBox {
+            title: "Response History"
             Layout.fillWidth: true
-            clip: true
-            delegate: Rectangle {
-                id: delegatedRectangle
-                required property int index
-                required property string payload
-                width: ListView.view.width
-                height: 30
-                color: index % 2 ? "#DDDDDD" : "#888888"
-                radius: 5
-                Text {
-                    text: delegatedRectangle.payload
-                    anchors.centerIn: parent
+            Layout.fillHeight: true
+
+            ListView {
+                id: messageView
+                model: messageModel
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                delegate: Rectangle {
+                    id: delegatedRectangle
+                    required property int index
+                    required property string payload
+                    width: ListView.view.width
+                    height: 30
+                    color: index % 2 ? "#DDDDDD" : "#888888"
+                    radius: 5
+                    Text {
+                        text: delegatedRectangle.payload
+                        anchors.centerIn: parent
+                    }
                 }
             }
         }
@@ -148,11 +148,9 @@ Window {
                     return "Unknown"
             }
 
-            Layout.columnSpan: 2
             Layout.fillWidth: true
-            color: "#333333"
-            text: "Status:" + stateToString(client.state) + "(" + client.state + ")"
-            enabled: client.state === MqttClient.Connected
+            text: "Status: " + stateToString(client.state) + " (" + client.state + ")"
+            color: client.state === MqttClient.Connected ? "green" : "red"
         }
     }
 }

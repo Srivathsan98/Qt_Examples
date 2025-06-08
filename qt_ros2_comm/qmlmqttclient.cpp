@@ -25,23 +25,27 @@ QmlMqttClient::QmlMqttClient(QObject *parent)
 
 void QmlMqttClient::connectToHost()
 {
+    qDebug() << "Connecting to MQTT broker at" << m_client.hostname() << ":" << m_client.port();
     m_client.connectToHost();
 }
 
 void QmlMqttClient::disconnectFromHost()
 {
+    qDebug() << "Disconnecting from MQTT broker";
     m_client.disconnectFromHost();
 }
 
 QmlMqttSubscription* QmlMqttClient::subscribe(const QString &topic)
 {
-    auto sub = m_client.subscribe(topic, 0);
+    qDebug() << "Subscribing to topic:" << topic;
+    auto sub = m_client.subscribe(topic, 1); // Using QoS 1 to match ROS2
     auto result = new QmlMqttSubscription(sub, this);
     return result;
 }
 
 void QmlMqttSubscription::handleMessage(const QMqttMessage &qmsg)
 {
+    qDebug() << "Received message on topic:" << qmsg.topic() << "with payload:" << qmsg.payload();
     emit messageReceived(qmsg.payload());
 }
 
@@ -77,4 +81,10 @@ QMqttClient::ClientState QmlMqttClient::state() const
 void QmlMqttClient::setState(const QMqttClient::ClientState &newState)
 {
     m_client.setState(newState);
+}
+
+void QmlMqttClient::publishMessage(const QString &topic, const QString &message)
+{
+    qDebug() << "Publishing message to topic:" << topic << "with payload:" << message;
+    m_client.publish(topic, message.toUtf8(), 1); // Using QoS 1 to match ROS2
 }
